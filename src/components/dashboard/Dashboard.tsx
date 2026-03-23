@@ -515,7 +515,7 @@ export function Dashboard() {
             {/* Scrollable area */}
             <div
               ref={scrollRef}
-              className="flex-1 overflow-x-auto scrollbar-none touch-pan-x"
+              className="flex-1 overflow-x-auto scrollbar-none touch-auto"
               style={{
                 scrollbarWidth: "none",
                 msOverflowStyle: "none",

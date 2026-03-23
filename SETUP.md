@@ -29,22 +29,49 @@ Your MongoDB Atlas connection string.
 
 ---
 
-## 2. VAPID Keys (for push notifications)
+## 2. Google OAuth
+
+1. Go to [console.cloud.google.com](https://console.cloud.google.com)
+2. Create or select a project
+3. Go to **APIs & Services** > **Credentials**
+4. Click **Create Credentials** > **OAuth 2.0 Client ID**
+5. Application type: **Web application**
+6. Add **Authorized redirect URIs**:
+   - `http://localhost:3000/api/auth/callback/google` (dev)
+   - `https://your-domain.com/api/auth/callback/google` (prod — must be `https://`)
+7. Copy the **Client ID** and **Client Secret** into `.env.local`:
+
+```
+GOOGLE_CLIENT_ID=your-client-id
+GOOGLE_CLIENT_SECRET=your-client-secret
+```
+
+---
+
+## 3. AUTH_SECRET
+
+Required by NextAuth v5 for signing JWTs. Generate one:
+
+```bash
+node -e "console.log(require('crypto').randomBytes(32).toString('base64url'))"
+```
+
+```
+AUTH_SECRET=your-generated-secret
+AUTH_TRUST_HOST=true
+```
+
+`AUTH_TRUST_HOST=true` is required for local production mode (`npm start`) and Vercel deployments.
+
+---
+
+## 4. VAPID Keys (optional — for push notifications)
 
 Generate a one-time keypair:
 
 ```bash
 npx web-push generate-vapid-keys
 ```
-
-This outputs two values:
-
-```
-Public Key:  BLxxxxxxx...
-Private Key: xxxxxxx...
-```
-
-Set them in `.env.local`:
 
 ```
 NEXT_PUBLIC_VAPID_PUBLIC_KEY=BLxxxxxxx...
@@ -55,15 +82,13 @@ VAPID_PRIVATE_KEY=xxxxxxx...
 
 ---
 
-## 3. CRON_SECRET
+## 5. CRON_SECRET (optional — for push notifications)
 
-A random string that protects the `/api/cron/check-notifications` endpoint. Generate one:
+A random string that protects the `/api/cron/check-notifications` endpoint:
 
 ```bash
 node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"
 ```
-
-Set it in `.env.local`:
 
 ```
 CRON_SECRET=your-generated-hex-string
@@ -73,7 +98,7 @@ CRON_SECRET=your-generated-hex-string
 
 ## Vercel Deployment
 
-Add all four env vars in your Vercel project settings:
+Add all env vars in your Vercel project settings:
 
 1. Go to your project on [vercel.com](https://vercel.com)
 2. **Settings** > **Environment Variables**
@@ -81,13 +106,13 @@ Add all four env vars in your Vercel project settings:
 
 ---
 
-## Cron Job (for push notifications)
+## Cron Job (optional — for push notifications)
 
 Set up a free cron at [cron-job.org](https://cron-job.org):
 
 1. Create an account
 2. Add a new cron job:
-   - **URL:** `https://cadence.czchen.dev/api/cron/check-notifications`
+   - **URL:** `https://your-domain.com/api/cron/check-notifications`
    - **Schedule:** Every 1 minute
    - **Headers:** Add `Authorization: Bearer YOUR_CRON_SECRET`
 3. Enable the job
@@ -97,7 +122,15 @@ Set up a free cron at [cron-job.org](https://cron-job.org):
 ## Run Locally
 
 ```bash
+npm install
 npm run dev
 ```
 
 Open [http://localhost:3000](http://localhost:3000).
+
+To test PWA features (service worker, install prompt), build and run in production mode:
+
+```bash
+npm run build
+npm start
+```

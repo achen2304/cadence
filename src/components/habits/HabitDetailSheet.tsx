@@ -208,25 +208,24 @@ export function HabitDetailSheet({
           ) : (
             <>
               <SheetHeader>
-                <div className="flex items-center justify-between">
-                  <SheetTitle className="flex items-center gap-2">
-                    <div
-                      className="size-3 rounded-full"
-                      style={{ backgroundColor: habit.color }}
-                    />
-                    {habit.icon && <span>{habit.icon}</span>}
-                    {habit.name}
-                  </SheetTitle>
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    onClick={() => setEditOpen(true)}
-                    aria-label="Edit"
-                  >
-                    <Pencil className="size-4" />
-                  </Button>
-                </div>
+                <SheetTitle className="flex items-center gap-2 pr-16">
+                  <div
+                    className="size-3 rounded-full"
+                    style={{ backgroundColor: habit.color }}
+                  />
+                  {habit.icon && <span>{habit.icon}</span>}
+                  {habit.name}
+                </SheetTitle>
               </SheetHeader>
+              <Button
+                variant="ghost"
+                size="icon-sm"
+                className="absolute top-3 right-11"
+                onClick={() => setEditOpen(true)}
+                aria-label="Edit"
+              >
+                <Pencil className="size-4" />
+              </Button>
 
               {habit.description && (
                 <p className="px-4 pb-2 text-sm text-muted-foreground">

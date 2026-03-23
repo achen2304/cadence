@@ -4,12 +4,14 @@ import { connectDB } from "@/lib/mongodb";
 import Habit from "@/models/Habit";
 import { requireUserId } from "@/lib/get-user";
 
-const reorderSchema = z.array(
-  z.object({
-    id: z.string().min(1),
-    order: z.number().int().min(0),
-  })
-).max(500);
+const reorderItemSchema = z.object({
+  id: z.string().min(1),
+  order: z.number().int().min(0),
+});
+
+const reorderSchema = z.object({
+  items: z.array(reorderItemSchema).max(500),
+});
 
 export async function POST(request: NextRequest) {
   let userId: string;
@@ -26,7 +28,7 @@ export async function POST(request: NextRequest) {
   if (!result.success) {
     return NextResponse.json({ error: "Invalid input", details: result.error.flatten() }, { status: 400 });
   }
-  const validatedData = result.data;
+  const validatedData = result.data.items;
 
   const ops = validatedData.map(({ id, order }) => ({
     updateOne: {

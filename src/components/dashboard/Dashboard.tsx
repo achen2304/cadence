@@ -411,6 +411,12 @@ export function Dashboard() {
             items: reordered.map((h, i) => ({ id: h._id, order: i })),
           }),
         });
+        // Refetch habits so the service worker caches the updated order
+        const res = await fetch("/api/habits");
+        if (res.ok) {
+          const fresh = await res.json();
+          if (Array.isArray(fresh)) setHabits(fresh);
+        }
       } catch {
         setError("Failed to save order");
         setTimeout(() => setError(null), 3000);

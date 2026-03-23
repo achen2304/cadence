@@ -1,36 +1,46 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# Cadence
 
-## Getting Started
+A personal habit and chore tracking PWA with GitHub-style activity grids, streak tracking, flexible scheduling, and iOS push notifications.
 
-First, run the development server:
+## Tech Stack
+
+- **Next.js** (App Router) — framework
+- **MongoDB Atlas** — database
+- **Tailwind CSS** + **shadcn/ui** — styling & components
+- **Web Push API** — native iOS notifications
+- **@dnd-kit** — drag-to-reorder habits
+- **IndexedDB** — offline write queue
+
+## Features
+
+- GitHub-style activity grid per habit
+- Streak tracking with skip support
+- Flexible scheduling (daily, every other day, days of week, days of month)
+- Tap to cycle status, long-press to override past days
+- Drag-to-reorder habit cards
+- Dark/light/system theme
+- Full offline support with background sync
+- iOS PWA with push notifications and badge count
+
+## Setup
+
+```bash
+npm install
+cp .env.example .env.local
+```
+
+See [SETUP.md](./SETUP.md) for detailed instructions on configuring environment variables, MongoDB, VAPID keys, and cron jobs.
+
+## Development
 
 ```bash
 npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+Open [http://localhost:3000](http://localhost:3000).
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+## Deployment
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+Hosted on [Vercel](https://vercel.com). Push to main to deploy.
 
-## Learn More
-
-To learn more about Next.js, take a look at the following resources:
-
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
-
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
-
-## Deploy on Vercel
-
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
-
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+Live at [cadence.czchen.dev](https://cadence.czchen.dev).

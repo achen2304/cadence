@@ -1,7 +1,15 @@
 import { NextRequest, NextResponse } from "next/server";
+import { z } from "zod";
 import { connectDB } from "@/lib/mongodb";
 import Habit from "@/models/Habit";
 import { requireUserId } from "@/lib/get-user";
+
+const reorderSchema = z.array(
+  z.object({
+    id: z.string().min(1),
+    order: z.number().int().min(0),
+  })
+).max(500);
 
 export async function POST(request: NextRequest) {
   let userId: string;
@@ -13,9 +21,14 @@ export async function POST(request: NextRequest) {
 
   await connectDB();
 
-  const body: { id: string; order: number }[] = await request.json();
+  const body = await request.json();
+  const result = reorderSchema.safeParse(body);
+  if (!result.success) {
+    return NextResponse.json({ error: "Invalid input", details: result.error.flatten() }, { status: 400 });
+  }
+  const validatedData = result.data;
 
-  const ops = body.map(({ id, order }) => ({
+  const ops = validatedData.map(({ id, order }) => ({
     updateOne: {
       filter: { _id: id, userId },
       update: { $set: { order } },

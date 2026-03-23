@@ -1,3 +1,4 @@
+import crypto from "crypto";
 import { NextRequest, NextResponse } from "next/server";
 import { connectDB } from "@/lib/mongodb";
 import Habit, { IHabit } from "@/models/Habit";
@@ -14,8 +15,14 @@ const VAPID_PRIVATE_KEY = process.env.VAPID_PRIVATE_KEY!;
 const VAPID_SUBJECT = process.env.VAPID_SUBJECT ?? "mailto:admin@cadence.app";
 
 export async function GET(request: NextRequest) {
-  const cronSecret = request.headers.get("authorization");
-  if (cronSecret !== `Bearer ${process.env.CRON_SECRET}`) {
+  if (!process.env.CRON_SECRET) {
+    return NextResponse.json({ error: "Server misconfiguration" }, { status: 500 });
+  }
+
+  const expected = `Bearer ${process.env.CRON_SECRET}`;
+  const provided = request.headers.get("authorization") ?? "";
+
+  if (provided.length !== expected.length || !crypto.timingSafeEqual(Buffer.from(provided), Buffer.from(expected))) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 

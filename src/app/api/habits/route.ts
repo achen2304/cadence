@@ -1,7 +1,28 @@
 import { NextRequest, NextResponse } from "next/server";
+import { z } from "zod";
 import { connectDB } from "@/lib/mongodb";
 import Habit from "@/models/Habit";
 import { requireUserId } from "@/lib/get-user";
+
+const habitCreateSchema = z.object({
+  name: z.string().min(1).max(200),
+  description: z.string().max(1000).optional(),
+  color: z.string().min(1).max(50),
+  icon: z.string().max(100).optional(),
+  schedule: z.object({
+    type: z.enum(["daily", "every_other_day", "days_of_week", "days_of_month"]),
+    anchorDate: z.string().optional(),
+    daysOfWeek: z.array(z.number().int().min(0).max(6)).optional(),
+    daysOfMonth: z.array(z.number().int().min(1).max(31)).optional(),
+  }),
+  order: z.number().int().min(0).optional(),
+  notification: z.object({
+    enabled: z.boolean(),
+    time: z.string(),
+  }).optional(),
+  gridRange: z.number().int().positive().optional(),
+  sections: z.array(z.unknown()).optional(),
+});
 
 export async function GET() {
   let userId: string;
@@ -31,6 +52,11 @@ export async function POST(request: NextRequest) {
   await connectDB();
 
   const body = await request.json();
+  const result = habitCreateSchema.safeParse(body);
+  if (!result.success) {
+    return NextResponse.json({ error: "Invalid input", details: result.error.flatten() }, { status: 400 });
+  }
+  const validatedData = result.data;
 
   // Set order to be after the last habit
   const lastHabit = await Habit.findOne({ userId, archivedAt: null })
@@ -39,9 +65,9 @@ export async function POST(request: NextRequest) {
   const nextOrder = lastHabit ? (lastHabit as { order: number }).order + 1 : 0;
 
   const habit = await Habit.create({
-    ...body,
+    ...validatedData,
     userId,
-    order: body.order ?? nextOrder,
+    order: validatedData.order ?? nextOrder,
   });
 
   return NextResponse.json(habit, { status: 201 });

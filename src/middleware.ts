@@ -3,7 +3,17 @@ import type { NextRequest } from "next/server";
 import { getToken } from "next-auth/jwt";
 
 export async function middleware(request: NextRequest) {
-  const isSecure = request.url.startsWith("https://");
+  // Redirect uppercase paths to lowercase to prevent case-based bypasses
+  const pathname = request.nextUrl.pathname;
+  if (pathname !== pathname.toLowerCase()) {
+    const url = request.nextUrl.clone();
+    url.pathname = pathname.toLowerCase();
+    return NextResponse.redirect(url, 308);
+  }
+
+  const isSecure =
+    process.env.NODE_ENV === "production" ||
+    request.url.startsWith("https://");
   const token = await getToken({
     req: request,
     secret: process.env.AUTH_SECRET,

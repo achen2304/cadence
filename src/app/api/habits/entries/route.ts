@@ -1,7 +1,11 @@
 import { NextRequest, NextResponse } from "next/server";
+import { z } from "zod";
 import { connectDB } from "@/lib/mongodb";
 import Entry from "@/models/Entry";
 import { requireUserId } from "@/lib/get-user";
+
+const dateRegex = /^\d{4}-\d{2}-\d{2}$/;
+const dateParamSchema = z.string().regex(dateRegex, "Must be YYYY-MM-DD format");
 
 /**
  * Batch entries endpoint — returns entries for ALL habits in a date range.
@@ -25,6 +29,15 @@ export async function GET(request: NextRequest) {
   if (!from || !to) {
     return NextResponse.json(
       { error: "from and to query params are required" },
+      { status: 400 }
+    );
+  }
+
+  const fromResult = dateParamSchema.safeParse(from);
+  const toResult = dateParamSchema.safeParse(to);
+  if (!fromResult.success || !toResult.success) {
+    return NextResponse.json(
+      { error: "Invalid input", details: { fieldErrors: {}, formErrors: ["'from' and 'to' must be YYYY-MM-DD format"] } },
       { status: 400 }
     );
   }

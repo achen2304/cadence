@@ -1,8 +1,16 @@
 import { NextRequest, NextResponse } from "next/server";
+import { z } from "zod";
 import { connectDB } from "@/lib/mongodb";
 import PushSubscription from "@/models/PushSubscription";
+import Habit from "@/models/Habit";
 import webpush from "web-push";
 import { requireUserId } from "@/lib/get-user";
+
+const sendSchema = z.object({
+  title: z.string().max(200),
+  body: z.string().max(1000),
+  habitId: z.string().optional(),
+});
 
 const VAPID_PUBLIC_KEY = process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY!;
 const VAPID_PRIVATE_KEY = process.env.VAPID_PRIVATE_KEY!;
@@ -18,11 +26,23 @@ export async function POST(request: NextRequest) {
 
   await connectDB();
 
-  const { title, body, habitId } = await request.json() as {
-    title: string;
-    body: string;
-    habitId?: string;
-  };
+  const rawBody = await request.json();
+  const result = sendSchema.safeParse(rawBody);
+  if (!result.success) {
+    return NextResponse.json(
+      { error: "Invalid input", details: result.error.flatten() },
+      { status: 400 }
+    );
+  }
+
+  const { title, body, habitId } = result.data;
+
+  if (habitId) {
+    const habit = await Habit.findOne({ _id: habitId, userId });
+    if (!habit) {
+      return NextResponse.json({ error: "Habit not found" }, { status: 404 });
+    }
+  }
 
   webpush.setVapidDetails(VAPID_SUBJECT, VAPID_PUBLIC_KEY, VAPID_PRIVATE_KEY);
 

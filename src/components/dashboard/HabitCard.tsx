@@ -179,7 +179,11 @@ function getScheduleLabelClient(habit: Habit): string {
     case "daily":
       return "Daily";
     case "every_other_day":
-      return "Every other day";
+    case "every_n_days": {
+      const interval = schedule.interval ?? 2;
+      const off = interval - 1;
+      return interval === 2 ? "Every other day" : `1 on, ${off} off`;
+    }
     case "days_of_week":
       return (
         schedule.daysOfWeek?.map((d) => dayNames[d]).join(" \u00B7 ") ??

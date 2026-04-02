@@ -1,10 +1,17 @@
 import mongoose, { Schema, Document, Types } from "mongoose";
 
+export interface ISection {
+  id: string;
+  name: string;
+  order: number;
+}
+
 export interface ISettings extends Document {
   _id: Types.ObjectId;
   userId: string;
   timezone: string;
   theme: "light" | "dark" | "system";
+  sections: ISection[];
   endOfDayReminder: {
     enabled: boolean;
     time: string;
@@ -21,6 +28,16 @@ const SettingsSchema = new Schema<ISettings>(
       type: String,
       enum: ["light", "dark", "system"],
       default: "system",
+    },
+    sections: {
+      type: [
+        {
+          id: { type: String, required: true },
+          name: { type: String, required: true },
+          order: { type: Number, required: true },
+        },
+      ],
+      default: [],
     },
     endOfDayReminder: {
       enabled: { type: Boolean, default: false },

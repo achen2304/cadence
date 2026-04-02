@@ -11,7 +11,7 @@ import {
   getDate,
   parseISO,
 } from "date-fns";
-import { Pencil } from "lucide-react";
+import { Pencil, Lock, LockOpen } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
   Sheet,
@@ -21,7 +21,7 @@ import {
 } from "@/components/ui/sheet";
 import { HabitForm } from "@/components/habits/HabitForm";
 import { cn } from "@/lib/utils";
-import type { Habit, Entry, HabitStats } from "@/lib/types";
+import type { Habit, Entry, HabitStats, Section } from "@/lib/types";
 import type { EntryStatus } from "@/lib/constants";
 
 const COLS = 14;
@@ -33,11 +33,13 @@ function isScheduled(habit: Habit, date: Date): boolean {
   switch (schedule.type) {
     case "daily":
       return true;
-    case "every_other_day": {
+    case "every_other_day":
+    case "every_n_days": {
       if (!schedule.anchorDate) return false;
+      const interval = schedule.interval ?? 2;
       const anchor = new Date(schedule.anchorDate + "T12:00:00Z");
       const diff = differenceInCalendarDays(date, anchor);
-      return diff >= 0 && diff % 2 === 0;
+      return diff >= 0 && diff % interval === 0;
     }
     case "days_of_week":
       return schedule.daysOfWeek?.includes(getDay(date)) ?? false;
@@ -53,6 +55,7 @@ interface HabitDetailSheetProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   onHabitUpdated?: () => void;
+  sections?: Section[];
 }
 
 export function HabitDetailSheet({
@@ -60,12 +63,14 @@ export function HabitDetailSheet({
   open,
   onOpenChange,
   onHabitUpdated,
+  sections = [],
 }: HabitDetailSheetProps) {
   const [habit, setHabit] = useState<Habit | null>(null);
   const [entries, setEntries] = useState<Record<string, Entry>>({});
   const [stats, setStats] = useState<HabitStats | null>(null);
   const [loading, setLoading] = useState(false);
   const [editOpen, setEditOpen] = useState(false);
+  const [unlockMode, setUnlockMode] = useState(false);
 
   // Fetch data when sheet opens
   useEffect(() => {
@@ -125,13 +130,18 @@ export function HabitDetailSheet({
   const handleCellTap = useCallback(
     async (dateStr: string, date: Date) => {
       if (!habit) return;
-      if (!isToday(date)) return;
+      if (isFuture(date) && !isToday(date)) return;
+      const scheduled = isScheduled(habit, date);
+      if (!unlockMode && !isToday(date)) return;
+      if (!unlockMode && !scheduled) return;
 
       const current = entries[dateStr]?.status ?? null;
       const cycle: (EntryStatus | null)[] = [null, "completed", "skipped", null];
       const idx = cycle.indexOf(current);
       const next = cycle[(idx + 1) % cycle.length];
       if (current === next || (current === null && next === null)) return;
+
+      const override = !scheduled || !isToday(date);
 
       setEntries((prev) => {
         const copy = { ...prev };
@@ -143,7 +153,7 @@ export function HabitDetailSheet({
             habitId: habit._id,
             date: dateStr,
             status: next,
-            isOverride: false,
+            isOverride: override,
           };
         }
         return copy;
@@ -158,7 +168,11 @@ export function HabitDetailSheet({
           const res = await fetch(`/api/habits/${habit._id}/entries`, {
             method: "POST",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ date: dateStr, status: next }),
+            body: JSON.stringify({
+              date: dateStr,
+              status: next,
+              isOverride: override,
+            }),
           });
           if (res.ok) {
             const data = await res.json();
@@ -172,7 +186,7 @@ export function HabitDetailSheet({
         // skip
       }
     },
-    [habit, entries, onHabitUpdated]
+    [habit, entries, onHabitUpdated, unlockMode]
   );
 
   const handleHabitSaved = useCallback(
@@ -217,15 +231,28 @@ export function HabitDetailSheet({
                   {habit.name}
                 </SheetTitle>
               </SheetHeader>
-              <Button
-                variant="ghost"
-                size="icon-sm"
-                className="absolute top-3 right-11"
-                onClick={() => setEditOpen(true)}
-                aria-label="Edit"
-              >
-                <Pencil className="size-4" />
-              </Button>
+              <div className="absolute top-3 right-11 flex items-center gap-1">
+                <Button
+                  variant={unlockMode ? "default" : "ghost"}
+                  size="icon-sm"
+                  onClick={() => setUnlockMode((v) => !v)}
+                  aria-label={unlockMode ? "Lock days" : "Unlock days"}
+                >
+                  {unlockMode ? (
+                    <LockOpen className="size-4" />
+                  ) : (
+                    <Lock className="size-4" />
+                  )}
+                </Button>
+                <Button
+                  variant="ghost"
+                  size="icon-sm"
+                  onClick={() => setEditOpen(true)}
+                  aria-label="Edit"
+                >
+                  <Pencil className="size-4" />
+                </Button>
+              </div>
 
               {habit.description && (
                 <p className="px-4 pb-2 text-sm text-muted-foreground">
@@ -303,11 +330,12 @@ export function HabitDetailSheet({
                       <div key={dateStr} className="relative">
                         <button
                           onClick={() => handleCellTap(dateStr, date)}
-                          disabled={!today}
+                          disabled={future || (!today && !unlockMode)}
                           className={cn(
                             "aspect-square w-full border-[0.5px] border-border/20 relative",
                             today &&
                               "active:scale-90 ring-2 ring-primary ring-inset",
+                            !today && unlockMode && !future && "active:scale-90",
                             future && "opacity-40"
                           )}
                           aria-label={`${dateStr}: ${status ?? "none"}`}
@@ -317,6 +345,7 @@ export function HabitDetailSheet({
                             color={habit.color}
                             scheduled={scheduled}
                             future={future}
+                            unlockMode={unlockMode}
                           />
                           {(isFirstCol || isFirstOfMonth) && (
                             <span className="absolute bottom-0.5 left-0.5 text-[8px] leading-none text-foreground/50">
@@ -353,6 +382,7 @@ export function HabitDetailSheet({
                 onSave={handleHabitSaved}
                 onArchive={handleDeleteOrArchive}
                 onDelete={handleDeleteOrArchive}
+                sections={sections}
               />
             </div>
           </SheetContent>
@@ -397,20 +427,32 @@ function CellFill({
   color,
   scheduled,
   future,
+  unlockMode,
 }: {
   status: EntryStatus | null;
   color: string;
   scheduled: boolean;
   future: boolean;
+  unlockMode?: boolean;
 }) {
   if (future && !scheduled) return <div className="size-full bg-muted/10" />;
   if (future)
     return (
       <div className="size-full" style={{ backgroundColor: `${color}10` }} />
     );
-  if (!scheduled) return <div className="size-full bg-muted/30" />;
+  if (!scheduled && unlockMode && status === null)
+    return (
+      <div className="size-full border border-dashed border-muted-foreground/30" />
+    );
+  if (!scheduled && !unlockMode)
+    return <div className="size-full bg-muted/30" />;
   if (status === "completed")
-    return <div className="size-full" style={{ backgroundColor: color }} />;
+    return (
+      <div
+        className="size-full"
+        style={{ backgroundColor: color, opacity: scheduled ? 1 : 0.6 }}
+      />
+    );
   if (status === "skipped")
     return (
       <div

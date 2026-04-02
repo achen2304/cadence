@@ -32,8 +32,13 @@ import {
   CalendarDays,
   GripVertical,
   ArrowUpDown,
+  Lock,
+  LockOpen,
+  Layers,
+  Trash2,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import {
   Sheet,
   SheetContent,
@@ -44,7 +49,7 @@ import { HabitForm } from "@/components/habits/HabitForm";
 import { HabitDetailSheet } from "@/components/habits/HabitDetailSheet";
 import { HeatmapSheet } from "@/components/habits/HeatmapSheet";
 import { cn } from "@/lib/utils";
-import type { Habit, Entry, HabitStats } from "@/lib/types";
+import type { Habit, Entry, HabitStats, Settings, Section } from "@/lib/types";
 import type { EntryStatus } from "@/lib/constants";
 
 const NUM_DAYS = 14;
@@ -58,23 +63,18 @@ const STAT_HEADERS: Record<StatMode, [string, string, string]> = {
   rate: ["Wk", "Mo", "Yr"],
 };
 
-const SCHEDULE_SECTION_LABELS: Record<string, string> = {
-  daily: "Daily",
-  every_other_day: "Daily",
-  days_of_week: "Weekly",
-  days_of_month: "Monthly",
-};
-
 function isScheduled(habit: Habit, date: Date): boolean {
   const schedule = habit.schedule;
   switch (schedule.type) {
     case "daily":
       return true;
-    case "every_other_day": {
+    case "every_other_day":
+    case "every_n_days": {
       if (!schedule.anchorDate) return false;
+      const interval = schedule.interval ?? 2;
       const anchor = new Date(schedule.anchorDate + "T12:00:00Z");
       const diff = differenceInCalendarDays(date, anchor);
-      return diff >= 0 && diff % 2 === 0;
+      return diff >= 0 && diff % interval === 0;
     }
     case "days_of_week":
       return schedule.daysOfWeek?.includes(getDay(date)) ?? false;
@@ -130,6 +130,9 @@ export function Dashboard() {
   const [heatmapOpen, setHeatmapOpen] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [savingCells, setSavingCells] = useState<Set<string>>(new Set());
+  const [unlockMode, setUnlockMode] = useState(false);
+  const [settings, setSettings] = useState<Settings | null>(null);
+  const [sectionsOpen, setSectionsOpen] = useState(false);
   const statsTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const dates = useMemo(() => {
@@ -147,11 +150,17 @@ export function Dashboard() {
   useEffect(() => {
     async function load() {
       try {
-        const res = await fetch("/api/habits");
-        if (res.ok) {
-          setHabits(Array.isArray(await res.clone().json()) ? await res.json() : []);
+        const [habitsRes, settingsRes] = await Promise.all([
+          fetch("/api/habits"),
+          fetch("/api/settings"),
+        ]);
+        if (habitsRes.ok) {
+          setHabits(Array.isArray(await habitsRes.clone().json()) ? await habitsRes.json() : []);
         } else {
           setError("Failed to load habits");
+        }
+        if (settingsRes.ok) {
+          setSettings(await settingsRes.json());
         }
       } catch {
         setError("Network error — check your connection");
@@ -259,31 +268,46 @@ export function Dashboard() {
     [habits]
   );
 
-  // Group habits by schedule type
+  // Group habits by user-defined sections
   const habitGroups = useMemo(() => {
-    const daily = activeHabits.filter(
-      (h) =>
-        h.schedule.type === "daily" || h.schedule.type === "every_other_day"
-    );
-    const weekly = activeHabits.filter(
-      (h) => h.schedule.type === "days_of_week"
-    );
-    const monthly = activeHabits.filter(
-      (h) => h.schedule.type === "days_of_month"
-    );
+    const sections = settings?.sections ?? [];
+    const sorted = [...sections].sort((a, b) => a.order - b.order);
+    const groups: { id: string | null; label: string; habits: Habit[] }[] = [];
 
-    const groups: { label: string; habits: Habit[] }[] = [];
-    if (daily.length > 0) groups.push({ label: "Daily", habits: daily });
-    if (weekly.length > 0) groups.push({ label: "Weekly", habits: weekly });
-    if (monthly.length > 0)
-      groups.push({ label: "Monthly", habits: monthly });
+    for (const section of sorted) {
+      const sectionHabits = activeHabits.filter(
+        (h) => h.sectionId === section.id
+      );
+      if (sectionHabits.length > 0) {
+        groups.push({
+          id: section.id,
+          label: section.name,
+          habits: sectionHabits,
+        });
+      }
+    }
+
+    // Uncategorized habits (null sectionId or pointing to deleted section)
+    const knownIds = new Set(sections.map((s) => s.id));
+    const uncategorized = activeHabits.filter(
+      (h) => !h.sectionId || !knownIds.has(h.sectionId)
+    );
+    if (uncategorized.length > 0) {
+      groups.push({
+        id: null,
+        label: sections.length > 0 ? "Uncategorized" : "",
+        habits: uncategorized,
+      });
+    }
+
     return groups;
-  }, [activeHabits]);
+  }, [activeHabits, settings?.sections]);
 
   const handleCellTap = useCallback(
     async (habit: Habit, dateStr: string, date: Date) => {
       if (isFuture(date) && !isToday(date)) return;
-      if (!isScheduled(habit, date)) return;
+      const scheduled = isScheduled(habit, date);
+      if (!scheduled && !unlockMode) return;
 
       const current = entries[habit._id]?.[dateStr]?.status ?? null;
       const hasExistingEntry = !!entries[habit._id]?.[dateStr];
@@ -312,7 +336,7 @@ export function Dashboard() {
             habitId: habit._id,
             date: dateStr,
             status: next,
-            isOverride: !isToday(date),
+            isOverride: !scheduled || !isToday(date),
           };
         }
         return { ...prev, [habit._id]: habitEntries };
@@ -337,7 +361,7 @@ export function Dashboard() {
             body: JSON.stringify({
               date: dateStr,
               status: next,
-              isOverride: !isToday(date),
+              isOverride: !scheduled || !isToday(date),
             }),
           });
           if (!res.ok) throw new Error("Save failed");
@@ -375,7 +399,7 @@ export function Dashboard() {
         });
       }
     },
-    [entries, refreshStats]
+    [entries, refreshStats, unlockMode]
   );
 
   const summaryRow = useMemo(() => {
@@ -429,6 +453,28 @@ export function Dashboard() {
     setHabits((prev) => [...prev, habit]);
     setSheetOpen(false);
   }, []);
+
+  const saveSections = useCallback(
+    async (sections: Section[]) => {
+      setSettings((prev) =>
+        prev ? { ...prev, sections } : prev
+      );
+      try {
+        const res = await fetch("/api/settings", {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ sections }),
+        });
+        if (res.ok) {
+          setSettings(await res.json());
+        }
+      } catch {
+        setError("Failed to save sections");
+        setTimeout(() => setError(null), 3000);
+      }
+    },
+    []
+  );
 
   const statHeaders = STAT_HEADERS[statMode];
   const nextMode = (): StatMode => {
@@ -487,12 +533,14 @@ export function Dashboard() {
               </button>
 
               {habitGroups.map((group) => (
-                <div key={group.label}>
-                  <div className="flex items-center px-2 shrink-0 h-6">
-                    <span className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
-                      {group.label}
-                    </span>
-                  </div>
+                <div key={group.id ?? "_uncategorized"}>
+                  {group.label && (
+                    <div className="flex items-center px-2 shrink-0 h-6">
+                      <span className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
+                        {group.label}
+                      </span>
+                    </div>
+                  )}
                   {group.habits.map((habit) => (
                     <button
                       key={habit._id}
@@ -572,8 +620,8 @@ export function Dashboard() {
 
                 {/* Grouped habit rows */}
                 {habitGroups.map((group) => (
-                  <div key={group.label}>
-                    <div className="h-6" />
+                  <div key={group.id ?? "_uncategorized"}>
+                    {group.label ? <div className="h-6" /> : <div className="h-1" />}
                     {group.habits.map((habit) => (
                       <div
                         key={habit._id}
@@ -612,6 +660,7 @@ export function Dashboard() {
                                 status={status}
                                 color={habit.color}
                                 scheduled={scheduled}
+                                unlockMode={unlockMode}
                               />
                             </button>
                           );
@@ -679,6 +728,22 @@ export function Dashboard() {
       <div className="fixed bottom-6 right-6 z-40 flex items-center gap-3">
         <Button
           size="icon"
+          variant={unlockMode ? "default" : "secondary"}
+          className={cn(
+            "size-10 rounded-full shadow-lg",
+            unlockMode && "ring-2 ring-primary ring-offset-2 ring-offset-background"
+          )}
+          onClick={() => setUnlockMode((v) => !v)}
+          aria-label={unlockMode ? "Lock days" : "Unlock days"}
+        >
+          {unlockMode ? (
+            <LockOpen className="size-4" />
+          ) : (
+            <Lock className="size-4" />
+          )}
+        </Button>
+        <Button
+          size="icon"
           variant="secondary"
           className="size-10 rounded-full shadow-lg"
           onClick={scrollToToday}
@@ -712,7 +777,10 @@ export function Dashboard() {
             <SheetTitle>New Habit</SheetTitle>
           </SheetHeader>
           <div className="px-4 pb-4">
-            <HabitForm onSave={handleHabitCreated} />
+            <HabitForm
+              onSave={handleHabitCreated}
+              sections={settings?.sections ?? []}
+            />
           </div>
         </SheetContent>
       </Sheet>
@@ -721,22 +789,35 @@ export function Dashboard() {
       <Sheet open={reorderOpen} onOpenChange={setReorderOpen}>
         <SheetContent side="bottom" className="max-h-[70dvh] overflow-y-auto">
           <SheetHeader>
-            <SheetTitle>Reorder Habits</SheetTitle>
+            <SheetTitle className="flex items-center justify-between pr-10">
+              Reorder Habits
+              <Button
+                variant="ghost"
+                size="sm"
+                className="text-xs gap-1"
+                onClick={() => setSectionsOpen(true)}
+              >
+                <Layers className="size-3.5" />
+                Sections
+              </Button>
+            </SheetTitle>
           </SheetHeader>
           <div className="px-4 pb-4 space-y-4">
             {habitGroups.map((group) => (
-              <div key={group.label}>
-                <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground mb-1.5">
-                  {group.label}
-                </p>
+              <div key={group.id ?? "_uncategorized"}>
+                {group.label && (
+                  <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground mb-1.5">
+                    {group.label}
+                  </p>
+                )}
                 <ReorderList
                   habits={group.habits}
                   onReorder={(reordered) => {
-                    // Merge reordered group back into full list
+                    const groupHabitIds = new Set(
+                      group.habits.map((h) => h._id)
+                    );
                     const otherHabits = activeHabits.filter(
-                      (h) =>
-                        SCHEDULE_SECTION_LABELS[h.schedule.type] !==
-                        group.label
+                      (h) => !groupHabitIds.has(h._id)
                     );
                     const merged = [...otherHabits, ...reordered];
                     handleReorder(merged);
@@ -753,6 +834,7 @@ export function Dashboard() {
         habitId={detailHabitId}
         open={detailOpen}
         onOpenChange={setDetailOpen}
+        sections={settings?.sections ?? []}
         onHabitUpdated={() => {
           // Refresh habits, entries, and stats
           fetch("/api/habits")
@@ -769,6 +851,19 @@ export function Dashboard() {
         onOpenChange={setHeatmapOpen}
         habits={habits}
       />
+
+      {/* Manage Sections Sheet */}
+      <Sheet open={sectionsOpen} onOpenChange={setSectionsOpen}>
+        <SheetContent side="bottom" className="max-h-[70dvh] overflow-y-auto">
+          <SheetHeader>
+            <SheetTitle>Manage Sections</SheetTitle>
+          </SheetHeader>
+          <ManageSections
+            sections={settings?.sections ?? []}
+            onSave={saveSections}
+          />
+        </SheetContent>
+      </Sheet>
     </div>
   );
 }
@@ -877,12 +972,14 @@ function CellFill({
   status,
   color,
   scheduled,
+  unlockMode,
 }: {
   status: EntryStatus | null;
   color: string;
   scheduled: boolean;
+  unlockMode?: boolean;
 }) {
-  if (!scheduled) {
+  if (!scheduled && !unlockMode) {
     return (
       <div className="size-full bg-muted/10 relative overflow-hidden">
         <div
@@ -902,8 +999,19 @@ function CellFill({
     );
   }
 
+  if (!scheduled && unlockMode && status === null) {
+    return (
+      <div className="size-full border border-dashed border-muted-foreground/30" />
+    );
+  }
+
   if (status === "completed") {
-    return <div className="size-full" style={{ backgroundColor: color }} />;
+    return (
+      <div
+        className="size-full"
+        style={{ backgroundColor: color, opacity: scheduled ? 1 : 0.6 }}
+      />
+    );
   }
 
   if (status === "skipped") {
@@ -929,4 +1037,149 @@ function CellFill({
   }
 
   return <div className="size-full bg-muted/15" />;
+}
+
+/* ── Manage Sections ── */
+
+function ManageSections({
+  sections,
+  onSave,
+}: {
+  sections: Section[];
+  onSave: (sections: Section[]) => void;
+}) {
+  const [items, setItems] = useState<Section[]>(
+    [...sections].sort((a, b) => a.order - b.order)
+  );
+  const [newName, setNewName] = useState("");
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [editingName, setEditingName] = useState("");
+
+  useEffect(() => {
+    setItems([...sections].sort((a, b) => a.order - b.order));
+  }, [sections]);
+
+  const addSection = () => {
+    const name = newName.trim();
+    if (!name) return;
+    const id = `sec_${Date.now().toString(36)}`;
+    const updated = [...items, { id, name, order: items.length }];
+    setItems(updated);
+    setNewName("");
+    onSave(updated);
+  };
+
+  const removeSection = (id: string) => {
+    const updated = items
+      .filter((s) => s.id !== id)
+      .map((s, i) => ({ ...s, order: i }));
+    setItems(updated);
+    onSave(updated);
+  };
+
+  const renameSection = (id: string) => {
+    const name = editingName.trim();
+    if (!name) return;
+    const updated = items.map((s) =>
+      s.id === id ? { ...s, name } : s
+    );
+    setItems(updated);
+    setEditingId(null);
+    onSave(updated);
+  };
+
+  const moveSection = (index: number, direction: -1 | 1) => {
+    const newIndex = index + direction;
+    if (newIndex < 0 || newIndex >= items.length) return;
+    const updated = [...items];
+    [updated[index], updated[newIndex]] = [updated[newIndex], updated[index]];
+    const reordered = updated.map((s, i) => ({ ...s, order: i }));
+    setItems(reordered);
+    onSave(reordered);
+  };
+
+  return (
+    <div className="px-4 pb-4 space-y-3">
+      <div className="flex gap-2">
+        <Input
+          value={newName}
+          onChange={(e) => setNewName(e.target.value)}
+          placeholder="New section name"
+          className="h-9 text-sm"
+          onKeyDown={(e) => {
+            if (e.key === "Enter") addSection();
+          }}
+        />
+        <Button size="sm" onClick={addSection} disabled={!newName.trim()}>
+          Add
+        </Button>
+      </div>
+
+      {items.length === 0 && (
+        <p className="text-sm text-muted-foreground">
+          No sections yet. Add one above to organize your habits.
+        </p>
+      )}
+
+      <div className="flex flex-col gap-1.5">
+        {items.map((section, index) => (
+          <div
+            key={section.id}
+            className="flex items-center gap-2 rounded-xl bg-card px-3 py-2.5 ring-1 ring-border/50"
+          >
+            <div className="flex flex-col gap-0.5">
+              <button
+                onClick={() => moveSection(index, -1)}
+                disabled={index === 0}
+                className="text-muted-foreground hover:text-foreground disabled:opacity-30 text-xs leading-none"
+                aria-label="Move up"
+              >
+                ▲
+              </button>
+              <button
+                onClick={() => moveSection(index, 1)}
+                disabled={index === items.length - 1}
+                className="text-muted-foreground hover:text-foreground disabled:opacity-30 text-xs leading-none"
+                aria-label="Move down"
+              >
+                ▼
+              </button>
+            </div>
+            <div className="flex-1 min-w-0">
+              {editingId === section.id ? (
+                <Input
+                  value={editingName}
+                  onChange={(e) => setEditingName(e.target.value)}
+                  onBlur={() => renameSection(section.id)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") renameSection(section.id);
+                    if (e.key === "Escape") setEditingId(null);
+                  }}
+                  className="h-7 text-sm"
+                  autoFocus
+                />
+              ) : (
+                <button
+                  onClick={() => {
+                    setEditingId(section.id);
+                    setEditingName(section.name);
+                  }}
+                  className="text-sm font-medium text-foreground text-left w-full truncate"
+                >
+                  {section.name}
+                </button>
+              )}
+            </div>
+            <button
+              onClick={() => removeSection(section.id)}
+              className="text-muted-foreground hover:text-destructive p-1"
+              aria-label="Delete section"
+            >
+              <Trash2 className="size-3.5" />
+            </button>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
 }

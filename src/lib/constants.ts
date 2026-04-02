@@ -15,7 +15,8 @@ export const GRID_RANGE_OPTIONS = [30, 90, 180, 365] as const;
 
 export type ScheduleType =
   | "daily"
-  | "every_other_day"
+  | "every_n_days"
+  | "every_other_day" // legacy, treat as every_n_days with interval=2
   | "days_of_week"
   | "days_of_month";
 

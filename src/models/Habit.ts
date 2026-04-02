@@ -19,9 +19,11 @@ export interface IHabit extends Document {
   color: string;
   icon: string;
   order: number;
+  sectionId: string | null;
   schedule: {
-    type: "daily" | "every_other_day" | "days_of_week" | "days_of_month";
+    type: "daily" | "every_n_days" | "every_other_day" | "days_of_week" | "days_of_month";
     anchorDate?: string;
+    interval?: number;
     daysOfWeek?: number[];
     daysOfMonth?: number[];
   };
@@ -44,13 +46,15 @@ const HabitSchema = new Schema<IHabit>(
     color: { type: String, required: true },
     icon: { type: String, default: "" },
     order: { type: Number, default: 0 },
+    sectionId: { type: String, default: null },
     schedule: {
       type: {
         type: String,
-        enum: ["daily", "every_other_day", "days_of_week", "days_of_month"],
+        enum: ["daily", "every_n_days", "every_other_day", "days_of_week", "days_of_month"],
         required: true,
       },
       anchorDate: { type: String },
+      interval: { type: Number },
       daysOfWeek: [{ type: Number }],
       daysOfMonth: [{ type: Number }],
     },

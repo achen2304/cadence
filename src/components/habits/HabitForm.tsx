@@ -3,7 +3,7 @@
 import { useCallback, useState } from "react";
 import { HABIT_COLORS, GRID_RANGE_OPTIONS } from "@/lib/constants";
 import type { ScheduleType } from "@/lib/constants";
-import type { Habit } from "@/lib/types";
+import type { Habit, Section } from "@/lib/types";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -33,18 +33,19 @@ interface HabitFormProps {
   onSave: (habit: Habit) => void;
   onArchive?: () => void;
   onDelete?: () => void;
+  sections?: Section[];
 }
 
-const SCHEDULE_LABELS: Record<ScheduleType, string> = {
-  daily: "Daily",
-  every_other_day: "Every Other Day",
-  days_of_week: "Days of Week",
-  days_of_month: "Days of Month",
-};
+const SCHEDULE_OPTIONS: { type: ScheduleType; label: string }[] = [
+  { type: "daily", label: "Daily" },
+  { type: "every_n_days", label: "Every N Days" },
+  { type: "days_of_week", label: "Days of Week" },
+  { type: "days_of_month", label: "Days of Month" },
+];
 
 const DOW_LABELS = ["S", "M", "T", "W", "T", "F", "S"];
 
-export function HabitForm({ habit, onSave, onArchive, onDelete }: HabitFormProps) {
+export function HabitForm({ habit, onSave, onArchive, onDelete, sections = [] }: HabitFormProps) {
   const isEdit = !!habit;
 
   const [name, setName] = useState(habit?.name ?? "");
@@ -52,7 +53,9 @@ export function HabitForm({ habit, onSave, onArchive, onDelete }: HabitFormProps
   const [color, setColor] = useState(habit?.color ?? HABIT_COLORS[3].hex);
   const [icon, setIcon] = useState(habit?.icon ?? "");
   const [scheduleType, setScheduleType] = useState<ScheduleType>(
-    habit?.schedule.type ?? "daily"
+    habit?.schedule.type === "every_other_day"
+      ? "every_n_days"
+      : habit?.schedule.type ?? "daily"
   );
   const [daysOfWeek, setDaysOfWeek] = useState<number[]>(
     habit?.schedule.daysOfWeek ?? []
@@ -63,12 +66,16 @@ export function HabitForm({ habit, onSave, onArchive, onDelete }: HabitFormProps
   const [anchorDate, setAnchorDate] = useState(
     habit?.schedule.anchorDate ?? ""
   );
+  const [breakDays, setBreakDays] = useState((habit?.schedule.interval ?? 2) - 1);
   const [gridRange, setGridRange] = useState(habit?.gridRange ?? 90);
   const [notifEnabled, setNotifEnabled] = useState(
     habit?.notification.enabled ?? false
   );
   const [notifTime, setNotifTime] = useState(
     habit?.notification.time ?? "09:00"
+  );
+  const [sectionId, setSectionId] = useState<string | null>(
+    habit?.sectionId ?? null
   );
   const [saving, setSaving] = useState(false);
 
@@ -96,9 +103,13 @@ export function HabitForm({ habit, onSave, onArchive, onDelete }: HabitFormProps
         description: description.trim(),
         color,
         icon,
+        sectionId,
         schedule: {
           type: scheduleType,
-          ...(scheduleType === "every_other_day" && { anchorDate }),
+          ...(scheduleType === "every_n_days" && {
+            anchorDate: anchorDate || new Date().toISOString().slice(0, 10),
+            interval: breakDays + 1,
+          }),
           ...(scheduleType === "days_of_week" && { daysOfWeek }),
           ...(scheduleType === "days_of_month" && { daysOfMonth }),
         },
@@ -132,8 +143,10 @@ export function HabitForm({ habit, onSave, onArchive, onDelete }: HabitFormProps
       description,
       color,
       icon,
+      sectionId,
       scheduleType,
       anchorDate,
+      breakDays,
       daysOfWeek,
       daysOfMonth,
       gridRange,
@@ -211,6 +224,33 @@ export function HabitForm({ habit, onSave, onArchive, onDelete }: HabitFormProps
         />
       </div>
 
+      {/* Section */}
+      {sections.length > 0 && (
+        <div className="flex flex-col gap-1.5">
+          <Label>Section</Label>
+          <Select
+            value={sectionId ?? "_none"}
+            onValueChange={(val) =>
+              setSectionId(val === "_none" ? null : val)
+            }
+          >
+            <SelectTrigger className="w-full">
+              <SelectValue placeholder="No section" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="_none">No section</SelectItem>
+              {[...sections]
+                .sort((a, b) => a.order - b.order)
+                .map((s) => (
+                  <SelectItem key={s.id} value={s.id}>
+                    {s.name}
+                  </SelectItem>
+                ))}
+            </SelectContent>
+          </Select>
+        </div>
+      )}
+
       {/* Color picker */}
       <div className="flex flex-col gap-1.5">
         <Label>Color</Label>
@@ -242,13 +282,16 @@ export function HabitForm({ habit, onSave, onArchive, onDelete }: HabitFormProps
       <div className="flex flex-col gap-1.5">
         <Label>Schedule</Label>
         <div className="flex flex-wrap gap-1">
-          {(
-            Object.entries(SCHEDULE_LABELS) as [ScheduleType, string][]
-          ).map(([type, label]) => (
+          {SCHEDULE_OPTIONS.map(({ type, label }) => (
             <button
               key={type}
               type="button"
-              onClick={() => setScheduleType(type)}
+              onClick={() => {
+                setScheduleType(type);
+                if (type === "every_n_days" && !anchorDate) {
+                  setAnchorDate(new Date().toISOString().slice(0, 10));
+                }
+              }}
               className={cn(
                 "rounded-lg px-3 py-1.5 text-xs font-medium transition-colors",
                 scheduleType === type
@@ -310,19 +353,38 @@ export function HabitForm({ habit, onSave, onArchive, onDelete }: HabitFormProps
         </div>
       )}
 
-      {/* Every Other Day anchor */}
-      {scheduleType === "every_other_day" && (
-        <div className="flex flex-col gap-1.5">
-          <Label htmlFor="anchor-date">Anchor date</Label>
-          <Input
-            id="anchor-date"
-            type="date"
-            value={anchorDate}
-            onChange={(e) => setAnchorDate(e.target.value)}
-          />
-          <p className="text-xs text-muted-foreground">
-            The habit will be scheduled every other day starting from this date.
-          </p>
+      {/* Every N Days config */}
+      {scheduleType === "every_n_days" && (
+        <div className="flex flex-col gap-3">
+          <div className="flex flex-col gap-1.5">
+            <Label htmlFor="break-days">Days off between</Label>
+            <div className="flex items-center gap-2">
+              <Input
+                id="break-days"
+                type="number"
+                min={1}
+                max={364}
+                value={breakDays}
+                onChange={(e) => setBreakDays(Math.max(1, parseInt(e.target.value) || 1))}
+                className="w-20"
+              />
+              <span className="text-sm text-muted-foreground">
+                {breakDays === 1 ? "day off" : "days off"}
+              </span>
+            </div>
+          </div>
+          <div className="flex flex-col gap-1.5">
+            <Label htmlFor="anchor-date">Starting from</Label>
+            <Input
+              id="anchor-date"
+              type="date"
+              value={anchorDate}
+              onChange={(e) => setAnchorDate(e.target.value)}
+            />
+            <p className="text-xs text-muted-foreground">
+              1 day on, {breakDays} {breakDays === 1 ? "day" : "days"} off, repeating from this date.
+            </p>
+          </div>
         </div>
       )}
 

@@ -1,5 +1,11 @@
 import type { ScheduleType, EntryStatus } from "./constants";
 
+export interface Section {
+  id: string;
+  name: string;
+  order: number;
+}
+
 export interface Habit {
   _id: string;
   name: string;
@@ -7,9 +13,11 @@ export interface Habit {
   color: string;
   icon: string;
   order: number;
+  sectionId: string | null;
   schedule: {
     type: ScheduleType;
     anchorDate?: string;
+    interval?: number;
     daysOfWeek?: number[];
     daysOfMonth?: number[];
   };
@@ -35,6 +43,7 @@ export interface Settings {
   _id?: string;
   timezone: string;
   theme: "light" | "dark" | "system";
+  sections: Section[];
   endOfDayReminder: {
     enabled: boolean;
     time: string;

@@ -7,6 +7,16 @@ import { requireUserId } from "@/lib/get-user";
 const settingsPatchSchema = z.object({
   timezone: z.string().min(1).max(100).optional(),
   theme: z.enum(["light", "dark", "system"]).optional(),
+  sections: z
+    .array(
+      z.object({
+        id: z.string().min(1).max(50),
+        name: z.string().min(1).max(100),
+        order: z.number().int().min(0),
+      })
+    )
+    .max(50)
+    .optional(),
   endOfDayReminder: z
     .object({
       enabled: z.boolean(),

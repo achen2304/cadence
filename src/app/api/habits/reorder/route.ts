@@ -7,6 +7,7 @@ import { requireUserId } from "@/lib/get-user";
 const reorderItemSchema = z.object({
   id: z.string().min(1),
   order: z.number().int().min(0),
+  sectionId: z.string().nullable().optional(),
 });
 
 const reorderSchema = z.object({
@@ -30,12 +31,16 @@ export async function POST(request: NextRequest) {
   }
   const validatedData = result.data.items;
 
-  const ops = validatedData.map(({ id, order }) => ({
-    updateOne: {
-      filter: { _id: id, userId },
-      update: { $set: { order } },
-    },
-  }));
+  const ops = validatedData.map(({ id, order, sectionId }) => {
+    const $set: Record<string, unknown> = { order };
+    if (sectionId !== undefined) $set.sectionId = sectionId;
+    return {
+      updateOne: {
+        filter: { _id: id, userId },
+        update: { $set },
+      },
+    };
+  });
 
   await Habit.bulkWrite(ops);
 

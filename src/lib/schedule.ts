@@ -14,11 +14,13 @@ export function isScheduledDay(
     case "daily":
       return true;
 
-    case "every_other_day": {
+    case "every_other_day":
+    case "every_n_days": {
       if (!schedule.anchorDate) return false;
+      const interval = schedule.interval ?? 2;
       const anchor = new Date(schedule.anchorDate + "T12:00:00Z");
       const diff = differenceInCalendarDays(date, anchor);
-      return diff >= 0 && diff % 2 === 0;
+      return diff >= 0 && diff % interval === 0;
     }
 
     case "days_of_week": {
@@ -44,7 +46,11 @@ export function getScheduleLabel(habit: IHabit): string {
     case "daily":
       return "Daily";
     case "every_other_day":
-      return "Every other day";
+    case "every_n_days": {
+      const interval = schedule.interval ?? 2;
+      const off = interval - 1;
+      return interval === 2 ? "Every other day" : `1 on, ${off} off`;
+    }
     case "days_of_week":
       return (
         schedule.daysOfWeek?.map((d) => dayNames[d]).join(" · ") ?? "No days"

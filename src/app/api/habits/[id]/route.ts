@@ -11,18 +11,19 @@ const habitUpdateSchema = z.object({
   color: z.string().min(1).max(50).optional(),
   icon: z.string().max(100).optional(),
   schedule: z.object({
-    type: z.enum(["daily", "every_other_day", "days_of_week", "days_of_month"]),
+    type: z.enum(["daily", "every_n_days", "every_other_day", "days_of_week", "days_of_month"]),
     anchorDate: z.string().optional(),
+    interval: z.number().int().min(2).max(365).optional(),
     daysOfWeek: z.array(z.number().int().min(0).max(6)).optional(),
     daysOfMonth: z.array(z.number().int().min(1).max(31)).optional(),
   }).optional(),
   order: z.number().int().min(0).optional(),
+  sectionId: z.string().nullable().optional(),
   notification: z.object({
     enabled: z.boolean(),
     time: z.string(),
   }).optional(),
   gridRange: z.number().int().positive().optional(),
-  sections: z.array(z.unknown()).optional(),
 });
 
 type RouteContext = { params: Promise<{ id: string }> };
